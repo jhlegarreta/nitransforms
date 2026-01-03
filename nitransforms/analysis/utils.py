@@ -30,12 +30,16 @@ represents approximately the mean distance from the cerebral cortex to the cente
 """
 
 
-def compute_fd_from_motion(motion_parameters: np.ndarray, radius: float = DEFAULT_FD_RADIUS) -> np.ndarray:
+def compute_fd_from_motion(
+    motion_parameters: np.ndarray,
+    radius: float = DEFAULT_FD_RADIUS,
+) -> np.ndarray:
     """Compute framewise displacement (FD) from motion parameters.
 
     The framewise displacement is the sum of the magnitudes of the translational
     and rotational motion, computed from the frame-to-frame differences along
-    the three spatial axes (`Power et al. (2015) <https://doi.org/10.1016/j.neuroimage.2011.10.018>`__).
+    the three spatial axes (
+    `Power et al. (2015) <https://doi.org/10.1016/j.neuroimage.2011.10.018>`__).
 
     Each row in the motion parameters represents one frame, and columns
     represent each coordinate axis ``x``, `y``, and ``z``. Translation
