@@ -73,7 +73,7 @@ def compute_fd_from_motion(motion_parameters: np.ndarray, radius: float = DEFAUL
 def compute_fd_from_transform(
     img: nb.spatialimages.SpatialImage,
     test_xfm: TransformBase,
-    radius: float = RADIUS,
+    radius: float = DEFAULT_FD_RADIUS,
 ) -> float:
     """
     Compute the framewise displacement (FD) for a given transformation.
