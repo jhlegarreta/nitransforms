@@ -21,11 +21,16 @@ from scipy.stats import zscore
 from nitransforms.base import TransformBase
 
 
-RADIUS = 50.0
-"""Typical radius (in mm) of a sphere mimicking the size of a typical human brain."""
+DEFAULT_FD_RADIUS = 50.0
+"""
+Default radius (in mm) of a sphere where framewise displacements are calculated.
+The choice was proposed by
+`Power et al. (2015) <https://doi.org/10.1016/j.neuroimage.2011.10.018>`__, and it
+represents approximately the mean distance from the cerebral cortex to the center of the head.
+"""
 
 
-def compute_fd_from_motion(motion_parameters: np.ndarray, radius: float = RADIUS) -> np.ndarray:
+def compute_fd_from_motion(motion_parameters: np.ndarray, radius: float = DEFAULT_FD_RADIUS) -> np.ndarray:
     """Compute framewise displacement (FD) from motion parameters.
 
     Each row in the motion parameters represents one frame, and columns
@@ -158,7 +163,7 @@ def extract_motion_parameters(affine: np.ndarray) -> Tuple[np.ndarray, np.ndarra
     return *translation, *rotation_deg
 
 
-def identify_spikes(fd: np.ndarray, threshold: float = 2.0) -> Tuple[np.ndarray, np.ndarray]:
+def identify_spikes(fd: np.ndarray, z_threshold: float = 2.0) -> Tuple[np.ndarray, np.ndarray]:
     """Identify motion spikes in framewise displacement data.
 
     Identifies high-motion frames as timepoint exceeding a given threshold value
@@ -168,7 +173,7 @@ def identify_spikes(fd: np.ndarray, threshold: float = 2.0) -> Tuple[np.ndarray,
     ----------
     fd : :obj:`~numpy.ndarray`
         Framewise displacement data.
-    threshold : :obj:`float`, optional
+    z_threshold : :obj:`float`, optional
         Threshold value to determine motion spikes.
 
     Returns
@@ -182,7 +187,7 @@ def identify_spikes(fd: np.ndarray, threshold: float = 2.0) -> Tuple[np.ndarray,
     # Normalize (z-score)
     fd_norm = zscore(fd)
 
-    mask = fd_norm > threshold
+    mask = fd_norm > z_threshold
     indices = np.where(mask)[0]
 
     return indices, mask
