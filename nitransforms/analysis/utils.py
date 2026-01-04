@@ -93,7 +93,8 @@ def compute_fd_from_transform(
 
     This implementation varies with respect to the original formulation by [Power2012]_
     in that the FD is computed as the average across a number of vertices sampled over the
-    sphere.
+    sphere. See :func:`~nitransforms.analysis.utils.sample_unit_sphere` for details
+    about the vertex sampling method.
 
     Parameters
     ----------
