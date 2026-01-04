@@ -92,7 +92,7 @@ def compute_fd_from_transform(
     Compute the framewise displacement (FD) for a given transformation.
 
     This implementation varies with respect to the original formulation by [Power2012]_
-    in that the FD is computed as the average across a number of vertices sample of the
+    in that the FD is computed as the average across a number of vertices sampled over the
     sphere.
 
     Parameters
@@ -200,9 +200,9 @@ def sample_unit_sphere(n_points: int = 8) -> np.ndarray:
 
     Notes
     -----
-    - There is no unique notion of "evenly distributed" for arbitrary `N` on a sphere.
+    - There is no unique notion of "evenly distributed" for arbitrary ``N`` on a sphere.
       This function uses:
-        * **Platonic solids** for certain small `N` (high symmetry; e.g. `N=6` gives
+        * **Platonic solids** for certain small ``N`` (high symmetry; e.g. ``N=6`` gives
           the ±axis points).
         * A **Fibonacci / golden-angle spiral** otherwise (fast, simple, good coverage).
 
@@ -231,7 +231,7 @@ def sample_unit_sphere(n_points: int = 8) -> np.ndarray:
     ((12, 3), True)
     ((20, 3), True)
 
-    For N=6, return the ±axis points (octahedron vertices):
+    For ``N=6``, return the ±axis points (octahedron vertices):
 
     >>> X = sample_unit_sphere(6)
     >>> # Each row has exactly one coordinate with magnitude 1, others 0
@@ -240,7 +240,7 @@ def sample_unit_sphere(n_points: int = 8) -> np.ndarray:
     >>> bool(np.all((np.abs(X) == 1.0).sum(axis=0) == 2))  # each axis appears twice (±)
     True
 
-    For N=4, the tetrahedron has constant pairwise dot product -1/3 off-diagonal:
+    For ``N=4``, the tetrahedron has constant pairwise dot product -1/3 off-diagonal:
 
     >>> X = sample_unit_sphere(4)
     >>> D = X @ X.T
@@ -248,7 +248,7 @@ def sample_unit_sphere(n_points: int = 8) -> np.ndarray:
     >>> bool(np.allclose(off, -1/3))
     True
 
-    For a quasi-uniform set, the second moment matrix is close to I/3, and the
+    For a quasi-uniform set, the second moment matrix is close to ``I/3``, and the
     minimum angular separation is non-trivial:
 
     >>> X = sample_unit_sphere(200)
