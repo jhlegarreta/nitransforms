@@ -27,6 +27,7 @@ import numpy as np
 from scipy.stats import zscore
 
 from nitransforms.base import TransformBase
+from nitransforms.linear import Affine
 
 
 DEFAULT_FD_RADIUS = 50.0
@@ -82,7 +83,8 @@ def compute_fd_from_motion(
 
 def compute_fd_from_transform(
     img: nb.spatialimages.SpatialImage,
-    test_xfm: TransformBase,
+    xfm: TransformBase,
+    xfm_prev: TransformBase | None = None,
     radius: float = DEFAULT_FD_RADIUS,
     n_vertices: int = 8,
 ) -> float:
@@ -97,8 +99,11 @@ def compute_fd_from_transform(
     ----------
     img : :obj:`~nibabel.spatialimages.SpatialImage`
         The reference image. Used to extract the center coordinates.
-    test_xfm : :obj:`~nitransforms.base.TransformBase`
+    xfm : :obj:`~nitransforms.base.TransformBase`
         The transformation to test. Applied to coordinates around the image center.
+    xfm_prev : :obj:`~nitransforms.base.TransformBase`, optional
+        A previous transformation to compare with. If ``None``, the identity
+        transformation is assumed (no transformation).
     radius : :obj:`float`, optional
         The radius (in mm) of the spherical neighborhood around the center of the image.
     n_vertices : :obj:`int`, optional
@@ -110,6 +115,8 @@ def compute_fd_from_transform(
         The average framewise displacement (FD) for the test transformation.
 
     """
+    xfm_prev = Affine() if xfm_prev is None else xfm_prev
+
     affine = img.affine
     # Compute the center of the image in voxel space
     center_ijk = 0.5 * (np.array(img.shape[:3]) - 1)
@@ -118,13 +125,13 @@ def compute_fd_from_transform(
     # Generate coordinates of points at radius distance from center
     fd_coords = sample_unit_sphere(n_points=n_vertices) * radius + center_xyz
     # Compute the average displacement from the test transformation
-    return np.mean(np.linalg.norm(test_xfm.map(fd_coords) - fd_coords, axis=-1))
+    return np.mean(np.linalg.norm(xfm.map(fd_coords) - xfm_prev.map(fd_coords), axis=-1))
 
 
 def displacements_within_mask(
     mask_img: nb.spatialimages.SpatialImage,
-    test_xfm: TransformBase,
-    reference_xfm: TransformBase | None = None,
+    xfm: TransformBase,
+    xfm_prev: TransformBase | None = None,
 ) -> np.ndarray:
     """
     Compute the distance between voxel coordinates mapped through two transforms.
@@ -134,11 +141,11 @@ def displacements_within_mask(
     mask_img : :obj:`~nibabel.spatialimages.SpatialImage`
         A mask image that defines the region of interest. Voxel coordinates
         within the mask are transformed.
-    test_xfm : :obj:`~nitransforms.base.TransformBase`
+    xfm : :obj:`~nitransforms.base.TransformBase`
         The transformation to test. This transformation is applied to the
         voxel coordinates.
-    reference_xfm : :obj:`~nitransforms.base.TransformBase`, optional
-        A reference transformation to compare with. If ``None``, the identity
+    xfm_prev : :obj:`~nitransforms.base.TransformBase`, optional
+        A previous (reference) transformation to compare with. If ``None``, the identity
         transformation is assumed (no transformation).
 
     Returns
@@ -155,10 +162,10 @@ def displacements_within_mask(
         np.argwhere(maskdata),
     )
     # Apply the test transformation
-    targets = test_xfm.map(xyz)
+    targets = xfm.map(xyz)
 
     # Compute the difference (displacement) between the test and reference transformations
-    diffs = targets - xyz if reference_xfm is None else targets - reference_xfm.map(xyz)
+    diffs = targets - xyz if xfm_prev is None else targets - xfm_prev.map(xyz)
     return np.linalg.norm(diffs, axis=-1)
 
 
