@@ -214,18 +214,15 @@ def sample_unit_sphere(n_points: int = 8) -> np.ndarray:
     Basic shape + unit norm:
 
     >>> import numpy as np
-    >>> X = sample_unit_sphere(10)
-    >>> X.shape
-    (10, 3)
-    >>> bool(np.allclose(np.linalg.norm(X, axis=1), 1.0))
-    True
-
-    Edge case:
-
-    >>> sample_unit_sphere(0)
-    Traceback (most recent call last):
-    ...
-    ValueError: n_points must be a positive integer
+    >>> for n_points in (1, 2, 8, 10, 12, 20):
+    ...     X = sample_unit_sphere(n_points)
+    ...     X.shape, bool(np.allclose(np.linalg.norm(X, axis=1), 1.0))
+    ((1, 3), True)
+    ((2, 3), True)
+    ((8, 3), True)
+    ((10, 3), True)
+    ((12, 3), True)
+    ((20, 3), True)
 
     For N=6, return the ±axis points (octahedron vertices):
 
@@ -260,13 +257,25 @@ def sample_unit_sphere(n_points: int = 8) -> np.ndarray:
     >>> min_angle_rad(X) > 0.18
     True
 
+    Improper inputs:
+
+    >>> sample_unit_sphere(True)
+    Traceback (most recent call last):
+    ...
+    TypeError: n_points must be a positive integer
+
+    >>> sample_unit_sphere(0)
+    Traceback (most recent call last):
+    ...
+    ValueError: n_points must be 1 or greater
+
     """
     if isinstance(n_points, (bool, np.bool_)) or not isinstance(
         n_points, (int, np.integer)
     ):
-        raise TypeError("n_points must be an integer")
+        raise TypeError("n_points must be a positive integer")
     if n_points < 1:
-        raise ValueError("n_points must be a positive integer")
+        raise ValueError("n_points must be 1 or greater")
 
     def _normalize(X):
         X = np.asarray(X, dtype=float)
