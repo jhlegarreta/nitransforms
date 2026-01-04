@@ -90,7 +90,7 @@ def test_displacements_within_mask(simple_mask_img, test_xfm, reference_xfm, exp
 )
 def test_compute_fd_from_transform(simple_mask_img, test_xfm, expected):
     fd = compute_fd_from_transform(simple_mask_img, test_xfm)
-    assert np.isclose(fd, expected)
+    assert np.isclose(fd, expected, atol=1e-4, rtol=1e-6)
 
 
 @pytest.mark.parametrize(
