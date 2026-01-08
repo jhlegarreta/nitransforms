@@ -67,18 +67,15 @@ def compute_fd_from_motion(
     """
 
     translations = motion_parameters[:, :3]
-    rotations_deg = motion_parameters[:, 3:]
-    rotations_rad = np.deg2rad(rotations_deg)
+    rotations = np.deg2rad(motion_parameters[:, 3:])
+    
+    displacements = np.hstack((
+        np.diff(translations, axis=0, prepend=0),
+        np.diff(rotations * radius, axis=0, prepend=0)
+    ))
 
-    # Compute differences between consecutive frames
-    d_translations = np.vstack([np.zeros((1, 3)), np.diff(translations, axis=0)])
-    d_rotations = np.vstack([np.zeros((1, 3)), np.diff(rotations_rad, axis=0)])
-
-    # Convert rotations from radians to displacement on a sphere
-    rotation_displacement = d_rotations * radius
-
-    # Compute FD as sum of absolute differences
-    return np.sum(np.abs(d_translations) + np.abs(rotation_displacement), axis=1)
+    # FD is the L1 norm (sum of absolute values)
+    return np.linalg.norm(displacements, ord=1, axis=1)
 
 
 def compute_fd_from_transform(
@@ -126,7 +123,7 @@ def compute_fd_from_transform(
     # Generate coordinates of points at radius distance from center
     fd_coords = sample_unit_sphere(n_points=n_vertices) * radius + center_xyz
     # Compute the average displacement from the test transformation
-    return np.mean(np.linalg.norm(xfm.map(fd_coords) - xfm_prev.map(fd_coords), axis=-1))
+    return np.mean(np.linalg.norm(xfm.map(fd_coords) - xfm_prev.map(fd_coords), ord=1, axis=-1))
 
 
 def displacements_within_mask(
