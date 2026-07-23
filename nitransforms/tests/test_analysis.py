@@ -4,6 +4,7 @@
 import numpy as np
 import nibabel as nb
 import pytest
+from scipy.spatial.transform import Rotation as R
 
 import nitransforms as nt
 
@@ -11,6 +12,7 @@ from nitransforms.analysis.utils import (
     compute_fd_from_motion,
     compute_fd_from_transform,
     displacements_within_mask,
+    euler_from_matrix,
     extract_motion_parameters,
 )
 
@@ -110,6 +112,19 @@ def test_compute_fd_from_transform(simple_mask_img, test_xfm, expected):
 def test_compute_fd_from_motion(motion_params, radius, expected):
     fd = compute_fd_from_motion(motion_params, radius=radius)
     np.testing.assert_allclose(fd, expected, atol=1e-4)
+
+
+def test_euler_from_matrix_matches_scipy_xyz():
+    expected = np.array([
+        [10.0, -5.0, 2.0],
+        [0.0, 30.0, -45.0],
+    ])
+    mats = R.from_euler("xyz", expected, degrees=True).as_matrix()
+    aff = np.tile(np.eye(4), (2, 1, 1))
+    aff[:, :3, :3] = mats
+
+    obtained = euler_from_matrix(aff, degrees=True)
+    assert np.allclose(obtained, expected, atol=1e-6)
 
 
 @pytest.mark.parametrize(

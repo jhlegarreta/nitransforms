@@ -24,6 +24,7 @@ from typing import Tuple
 
 import nibabel as nb
 import numpy as np
+from scipy.spatial.transform import Rotation as R
 
 from nitransforms.base import TransformBase
 from nitransforms.linear import Affine
@@ -166,6 +167,33 @@ def displacements_within_mask(
     return np.linalg.norm(diffs, axis=-1)
 
 
+def euler_from_matrix(affine: np.ndarray, degrees: bool = True) -> np.ndarray:
+    """Extract XYZ Euler angles from affine or rotation matrices using SciPy.
+
+    Parameters
+    ----------
+    affine : np.ndarray
+        Array with shape (..., 4, 4) or (..., 3, 3).
+    degrees : bool, optional
+        If True, return degrees; otherwise radians.
+
+    Returns
+    -------
+    np.ndarray
+        Array of shape (..., 3), Euler angles in 'xyz' convention.
+    """
+    affine = np.asarray(affine, dtype=float)
+    if affine.shape[-2:] not in ((3, 3), (4, 4)):
+        raise ValueError("affine must end with shape (3, 3) or (4, 4).")
+
+    mats = affine[..., :3, :3]
+    batch_shape = mats.shape[:-2]
+    mats_2d = mats.reshape(-1, 3, 3)
+
+    angles = R.from_matrix(mats_2d).as_euler("xyz", degrees=degrees)
+    return angles.reshape(*batch_shape, 3)
+
+
 def extract_motion_parameters(affine: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     """Extract translation (mm) and rotation (degrees) parameters from an affine matrix.
 
@@ -181,12 +209,8 @@ def extract_motion_parameters(affine: np.ndarray) -> Tuple[np.ndarray, np.ndarra
     """
 
     translation = affine[:3, 3]
-    rotation_rad = np.arctan2(
-        [affine[2, 1], affine[0, 2], affine[1, 0]],
-        [affine[2, 2], affine[0, 0], affine[1, 1]],
-    )
-    rotation_deg = np.rad2deg(rotation_rad)
-    return *translation, *rotation_deg
+    rotation = euler_from_matrix(affine, degrees=True)
+    return *translation, *rotation
 
 
 def sample_unit_sphere(n_points: int = 8) -> np.ndarray:
