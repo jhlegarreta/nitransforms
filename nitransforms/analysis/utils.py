@@ -24,7 +24,6 @@ from typing import Tuple
 
 import nibabel as nb
 import numpy as np
-from scipy.stats import zscore
 
 from nitransforms.base import TransformBase
 from nitransforms.linear import Affine
@@ -340,35 +339,3 @@ def sample_unit_sphere(n_points: int = 8) -> np.ndarray:
 
     X = np.column_stack((r * np.cos(theta), r * np.sin(theta), z))
     return _normalize(X)
-
-
-def identify_spikes(
-    fd: np.ndarray, z_threshold: float = 2.0
-) -> Tuple[np.ndarray, np.ndarray]:
-    """Identify motion spikes in framewise displacement data.
-
-    Identifies high-motion frames as timepoint exceeding a given threshold value
-    based on z-score normalized framewise displacement (FD) values.
-
-    Parameters
-    ----------
-    fd : :obj:`~numpy.ndarray`
-        Framewise displacement data.
-    z_threshold : :obj:`float`, optional
-        Threshold value to determine motion spikes.
-
-    Returns
-    -------
-    indices : :obj:`~numpy.ndarray`
-        Indices of identified motion spikes.
-    mask : :obj:`~numpy.ndarray`
-        Mask of identified motion spikes.
-    """
-
-    # Normalize (z-score)
-    fd_norm = zscore(fd)
-
-    mask = fd_norm > z_threshold
-    indices = np.where(mask)[0]
-
-    return indices, mask
