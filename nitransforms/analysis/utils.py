@@ -66,12 +66,18 @@ def compute_fd_from_motion(
         between consecutive frames.
     """
 
+    # Columns expected: [tx, ty, tz, rx, ry, rz] where rotations are in degrees
+    # FD is computed as Power-style L1 displacement sum across 6 motion components.
+    motion_parameters = np.asarray(motion_parameters, dtype=float)
+    if motion_parameters.ndim != 2 or motion_parameters.shape[1] != 6:
+        raise ValueError("motion_parameters must have shape (T, 6).")
+
     translations = motion_parameters[:, :3]
     rotations = np.deg2rad(motion_parameters[:, 3:])
     
     displacements = np.hstack((
-        np.diff(translations, axis=0, prepend=0),
-        np.diff(rotations * radius, axis=0, prepend=0)
+        np.diff(translations, axis=0, prepend=np.zeros((1, 3))),
+        np.diff(rotations * radius, axis=0, prepend=np.zeros((1, 3)))
     ))
 
     # FD is the L1 norm (sum of absolute values)
