@@ -62,8 +62,9 @@ def compute_fd_from_motion(
     Returns
     -------
     :obj:`~numpy.ndarray`
-        The framewise displacement (FD) as the sum of absolute differences
-        between consecutive frames.
+        The framewise displacement (FD) asat each timepoint as the L1 norm of
+        frame-to-frame displacement across translations and rotation-derived
+        displacements.
     """
 
     # Columns expected: [tx, ty, tz, rx, ry, rz] where rotations are in degrees
