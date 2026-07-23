@@ -93,6 +93,10 @@ def compute_fd_from_transform(
     sphere. See :func:`~nitransforms.analysis.utils.sample_unit_sphere` for details
     about the vertex sampling method.
 
+    For ``n_vertices == 1``, FD is computed from rigid-body parameter increments
+    (translation L1 + radius-scaled rotation L1) instead of averaging displacements
+    over sampled sphere points. See :func:`compute_fd_from_motion` for direct comparability.
+
     Parameters
     ----------
     img : :obj:`~nibabel.spatialimages.SpatialImage`
@@ -113,6 +117,20 @@ def compute_fd_from_transform(
         The average framewise displacement (FD) for the test transformation.
 
     """
+    if n_vertices < 1:
+        raise ValueError("n_vertices must be >= 1")
+
+    # For a single vertex, use rigid-body parameter increments (L1 translation + radius-scaled L1 rotation)
+    # instead of point sampling to avoid dependence on an arbitrary sphere vertex.
+    if n_vertices == 1:
+        # Relative transform from previous frame to current frame
+        rel = np.linalg.inv(xfm_prev.matrix) @ xfm.matrix
+
+        d_t = rel[:3, 3]
+        d_r = R.from_matrix(rel[:3, :3]).as_euler("xyz", degrees=False)
+
+        return float(np.linalg.norm(d_t, ord=1) + radius * np.linalg.norm(d_r, ord=1))
+
     xfm_prev = Affine() if xfm_prev is None else xfm_prev
 
     affine = img.affine

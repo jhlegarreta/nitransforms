@@ -94,6 +94,40 @@ def test_compute_fd_from_transform(simple_mask_img, test_xfm, expected):
     assert np.isclose(fd, expected, atol=1e-4, rtol=1e-6)
 
 
+def test_single_vertex_fd_computation_variants():
+    """For n_vertices=1, FD equals the L1 displacement of the single sampled point."""
+    radius = 50.0
+
+    # One-step motion parameters: [tx, ty, tz, rx, ry, rz] (deg)
+    motion = np.array([
+        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        [1.0, -2.0, 0.5, 1.5, -0.5, 0.25],
+    ])
+
+    # Expected from canonical function
+    fd_motion = compute_fd_from_motion(motion, radius=radius)[1]
+
+    # Build matching transforms (prev identity, current from same params)
+    t = motion[1, :3]
+    r_deg = motion[1, 3:]
+    rot = R.from_euler("xyz", r_deg, degrees=True).as_matrix()
+
+    M_prev = np.eye(4)
+    M_curr = np.eye(4)
+    M_curr[:3, :3] = rot
+    M_curr[:3, 3] = t
+
+    xfm_prev = nt.linear.Affine(M_prev)
+    xfm = nt.linear.Affine(M_curr)
+
+    img = nb.Nifti1Image(np.zeros((5, 5, 5), dtype=np.float32), np.eye(4))
+    fd_xfm = compute_fd_from_transform(
+        img, xfm, xfm_prev=xfm_prev, radius=radius, n_vertices=1
+    )
+
+    assert np.isclose(fd_xfm, fd_motion, atol=1e-6)
+
+
 @pytest.mark.parametrize(
     "motion_params, radius, expected",
     [
