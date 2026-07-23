@@ -267,8 +267,9 @@ def sample_unit_sphere(n_points: int = 8) -> np.ndarray:
     Basic shape + unit norm:
 
     >>> import numpy as np
-    >>> for n_points in (1, 2, 8, 10, 12, 20):
-    ...     X = sample_unit_sphere(n_points)
+    >>> values = (1, 2, 8, 10, 12, 20)
+    >>> for n_pts in values:
+    ...     X = sample_unit_sphere(n_pts)
     ...     X.shape, bool(np.allclose(np.linalg.norm(X, axis=1), 1.0))
     ((1, 3), True)
     ((2, 3), True)
@@ -277,7 +278,30 @@ def sample_unit_sphere(n_points: int = 8) -> np.ndarray:
     ((12, 3), True)
     ((20, 3), True)
 
-    For ``N=6``, return the ±axis points (octahedron vertices):
+    Visualization of sampled points for each case:
+
+    .. plot::
+       :context: close-figs
+       :include-source: true
+
+       import numpy as np
+       import matplotlib.pyplot as plt
+
+       values = (1, 2, 8, 10, 12, 20)
+
+       fig = plt.figure(figsize=(10, 6))
+       for i, n_pts in enumerate(values, start=1):
+           X = sample_unit_sphere(n_pts)
+           ax = fig.add_subplot(2, 3, i, projection="3d")
+           ax.scatter(X[:, 0], X[:, 1], X[:, 2], s=30)
+           ax.set_title(f"n={n_pts}")
+           ax.set_xlabel("x")
+           ax.set_ylabel("y")
+           ax.set_zlabel("z")
+           ax.set_box_aspect((1, 1, 1))
+       fig.tight_layout()
+
+    For ``N=6``, return the :math:`\\pm`axis points (octahedron vertices):
 
     >>> X = sample_unit_sphere(6)
     >>> # Each row has exactly one coordinate with magnitude 1, others 0
