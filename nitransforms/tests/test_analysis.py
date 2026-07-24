@@ -86,7 +86,7 @@ def test_displacements_within_mask(simple_mask_img, test_xfm, reference_xfm, exp
             [0, 1, 0, 2],
             [0, 0, 1, 3],
             [0, 0, 0, 1],
-        ])), np.linalg.norm([1, 2, 3])),
+        ])), np.linalg.norm([1, 2, 3], ord=1)),  # L1 norm of translation displacement
     ],
 )
 def test_compute_fd_from_transform(simple_mask_img, test_xfm, expected):
