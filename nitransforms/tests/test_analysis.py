@@ -77,6 +77,13 @@ def test_displacements_within_mask(simple_mask_img, test_xfm, reference_xfm, exp
     np.testing.assert_allclose(disp, expected)
 
 
+def test_compute_fd_from_transform_exceptions():
+    img = nb.Nifti1Image(np.zeros((5, 5, 5), dtype=float), np.eye(4))
+    xfm = nt.linear.Affine(np.eye(4))
+    with pytest.raises(ValueError, match=r"n_vertices must be >= 1"):
+        compute_fd_from_transform(img=img, xfm=xfm, n_vertices=0)
+
+
 @pytest.mark.parametrize(
     "test_xfm, expected",
     [
@@ -94,7 +101,13 @@ def test_compute_fd_from_transform(simple_mask_img, test_xfm, expected):
     assert np.isclose(fd, expected, atol=1e-4, rtol=1e-6)
 
 
-def test_single_vertex_fd_computation_variants():
+def test_compute_fd_from_motion_exceptions():
+    bad = np.zeros((10, 5), dtype=float)  # must be (T, 6)
+    with pytest.raises(ValueError, match=r"motion_parameters must have shape \(T, 6\)\."):
+        compute_fd_from_motion(bad)
+
+
+def test_compute_fd_from_motion_single_vertex_variants():
     """For n_vertices=1, FD equals the L1 displacement of the single sampled point."""
     radius = 50.0
 
@@ -146,6 +159,38 @@ def test_single_vertex_fd_computation_variants():
 def test_compute_fd_from_motion(motion_params, radius, expected):
     fd = compute_fd_from_motion(motion_params, radius=radius)
     np.testing.assert_allclose(fd, expected, atol=1e-4)
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [
+        (2, 2),        # square but invalid
+        (3, 4),        # rectangular
+        (4, 3),        # rectangular
+        (5, 5),        # wrong square size
+        (1, 3, 4),     # last dims (3,4)
+        (2, 4, 3),     # last dims (4,3)
+        (2, 3, 3, 4),  # last dims (3,4)
+        (2, 4, 4, 3),  # last dims (4,3)
+    ],
+)
+def test_euler_from_matrix_exceptions(shape):
+    bad = np.zeros(shape, dtype=float)
+    with pytest.raises(
+        ValueError,
+        match=r"affine must end with shape \(3, 3\) or \(4, 4\)\.",
+    ):
+        euler_from_matrix(bad)
+
+
+@pytest.mark.parametrize("shape", [(3, 3), (4, 4), (7, 3, 3), (5, 4, 4)])
+def test_euler_from_matrix_valid_shapes(shape):
+    good = np.eye(shape[-1], dtype=float)
+    if len(shape) > 2:
+        good = np.broadcast_to(good, shape).copy()
+
+    out = euler_from_matrix(good)
+    assert out.shape == shape[:-2] + (3,)
 
 
 def test_euler_from_matrix_matches_scipy_xyz():
