@@ -62,9 +62,14 @@ def compute_fd_from_motion(
     Returns
     -------
     :obj:`~numpy.ndarray`
-        The framewise displacement (FD) asat each timepoint as the L1 norm of
+        The framewise displacement (FD) at each timepoint as the L1 norm of
         frame-to-frame displacement across translations and rotation-derived
         displacements.
+
+    Raises
+    ------
+    exc:`ValueError`
+        If ``motion_parameters`` is not a 2D array with shape ``(T, 6)``.
     """
 
     # Columns expected: [tx, ty, tz, rx, ry, rz] where rotations are in degrees
@@ -123,6 +128,10 @@ def compute_fd_from_transform(
     :obj:`float`
         The average framewise displacement (FD) for the test transformation.
 
+    Raises
+    ------
+    exc:`ValueError`
+        If ``n_vertices < 1``.
     """
     if n_vertices < 1:
         raise ValueError("n_vertices must be >= 1")
@@ -197,15 +206,20 @@ def euler_from_matrix(affine: np.ndarray, degrees: bool = True) -> np.ndarray:
 
     Parameters
     ----------
-    affine : np.ndarray
+    affine : :obj:`~numpy.ndarray`
         Array with shape (..., 4, 4) or (..., 3, 3).
-    degrees : bool, optional
+    degrees : :obj:`bool`, optional
         If True, return degrees; otherwise radians.
 
     Returns
     -------
-    np.ndarray
+   :obj:`~numpy.ndarray`
         Array of shape (..., 3), Euler angles in 'xyz' convention.
+
+    Raises
+    ------
+    :exc:`ValueError`
+        If ``affine`` does not end with shape ``(3, 3)`` or ``(4, 4)``.
     """
     affine = np.asarray(affine, dtype=float)
     if affine.shape[-2:] not in ((3, 3), (4, 4)):
@@ -254,13 +268,20 @@ def sample_unit_sphere(n_points: int = 8) -> np.ndarray:
 
     Parameters
     ----------
-    n_points : int
+    n_points : obj:`int`
         Number of points on the sphere.
 
     Returns
     -------
-    numpy.ndarray
+    :obj:`~numpy.ndarray`
         An array of shape ``(n_points, 3)`` whose rows have unit norm.
+
+    Raises
+    ------
+    :exc:`TypeError`
+        If ``n_points`` is a boolean or not an integer type.
+    :exc:`ValueError`
+        If ``n_points < 1``.
 
     Examples
     --------
