@@ -260,10 +260,10 @@ def sample_unit_sphere(n_points: int = 8) -> np.ndarray:
 
     Notes
     -----
-    - There is no unique notion of "evenly distributed" for arbitrary ``N`` on a sphere.
-      This function uses:
-        * **Platonic solids** for certain small ``N`` (high symmetry; e.g. ``N=6`` gives
-          the ±axis points).
+    - There is no unique notion of "evenly distributed" for arbitrary :math:`N` on
+      a sphere. This function uses:
+        * **Platonic solids** for certain small :math:`N` (high symmetry; e.g.
+          :math:`N = 6` gives the :math:`\\pm` axis points).
         * A **Fibonacci / golden-angle spiral** otherwise (fast, simple, good coverage).
 
     Parameters
@@ -322,7 +322,7 @@ def sample_unit_sphere(n_points: int = 8) -> np.ndarray:
            ax.set_box_aspect((1, 1, 1))
        fig.tight_layout()
 
-    For ``N=6``, return the :math:`\\pm`axis points (octahedron vertices):
+    For :math:`N = 6`, return the :math:`\\pm` axis points (octahedron vertices):
 
     >>> X = sample_unit_sphere(6)
     >>> # Each row has exactly one coordinate with magnitude 1, others 0
@@ -331,7 +331,8 @@ def sample_unit_sphere(n_points: int = 8) -> np.ndarray:
     >>> bool(np.all((np.abs(X) == 1.0).sum(axis=0) == 2))  # each axis appears twice (±)
     True
 
-    For ``N=4``, the tetrahedron has constant pairwise dot product -1/3 off-diagonal:
+    For :math:`N = 4`, the tetrahedron has constant pairwise dot product -1/3
+    off-diagonal:
 
     >>> X = sample_unit_sphere(4)
     >>> D = X @ X.T
