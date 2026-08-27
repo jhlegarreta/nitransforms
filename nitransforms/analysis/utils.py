@@ -268,7 +268,7 @@ def sample_unit_sphere(n_points: int = 8) -> np.ndarray:
 
     Parameters
     ----------
-    n_points : obj:`int`
+    n_points : :obj:`int`
         Number of points on the sphere.
 
     Returns
