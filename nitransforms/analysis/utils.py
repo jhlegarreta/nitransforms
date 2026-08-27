@@ -308,6 +308,8 @@ def sample_unit_sphere(n_points: int = 8) -> np.ndarray:
        import numpy as np
        import matplotlib.pyplot as plt
 
+       from nitransforms.analysis.utils import sample_unit_sphere
+
        values = (1, 2, 8, 10, 12, 20)
 
        fig = plt.figure(figsize=(10, 6))
