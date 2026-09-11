@@ -216,7 +216,7 @@ def test_euler_from_matrix_matches_scipy_xyz():
             [0, np.cos(np.deg2rad(30)), -np.sin(np.deg2rad(30)), 0],
             [0, np.sin(np.deg2rad(30)), np.cos(np.deg2rad(30)), 0],
             [0, 0, 0, 1],  # rotation only
-        ]), [0, 0, 0], [30, 0, 0]),  # Only one rot will be close to 30
+        ]), [0, 0, 0], [np.deg2rad(30), 0, 0]),  # Only one rot will be close to 30
     ],
 )
 def test_extract_motion_parameters(affine, expected_trans, expected_rot):
@@ -224,6 +224,6 @@ def test_extract_motion_parameters(affine, expected_trans, expected_rot):
     assert np.allclose(params[:3], expected_trans)
     # For rotation case, at least one value close to 30
     if np.any(np.abs(expected_rot)):
-        assert np.any(np.isclose(np.abs(params[3:]), 30, atol=1e-4))
+        assert np.any(np.isclose(np.abs(params[3:]), np.deg2rad(30), atol=1e-4))
     else:
         assert np.allclose(params[3:], expected_rot)

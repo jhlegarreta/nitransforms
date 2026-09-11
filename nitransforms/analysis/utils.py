@@ -201,7 +201,7 @@ def displacements_within_mask(
     return np.linalg.norm(diffs, axis=-1)
 
 
-def euler_from_matrix(affine: np.ndarray, degrees: bool = True) -> np.ndarray:
+def euler_from_matrix(affine: np.ndarray, degrees: bool = False) -> np.ndarray:
     """Extract XYZ Euler angles from affine or rotation matrices using SciPy.
 
     Parameters
@@ -209,7 +209,7 @@ def euler_from_matrix(affine: np.ndarray, degrees: bool = True) -> np.ndarray:
     affine : :obj:`~numpy.ndarray`
         Array with shape (..., 4, 4) or (..., 3, 3).
     degrees : :obj:`bool`, optional
-        If True, return degrees; otherwise radians.
+        If :obj:`True`, return degrees; otherwise radians.
 
     Returns
     -------
@@ -233,13 +233,15 @@ def euler_from_matrix(affine: np.ndarray, degrees: bool = True) -> np.ndarray:
     return angles.reshape(*batch_shape, 3)
 
 
-def extract_motion_parameters(affine: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-    """Extract translation (mm) and rotation (degrees) parameters from an affine matrix.
+def extract_motion_parameters(affine: np.ndarray, degrees: bool = False) -> Tuple[np.ndarray, np.ndarray]:
+    """Extract translation (mm) and rotation parameters from an affine matrix.
 
     Parameters
     ----------
     affine : :obj:`~numpy.ndarray`
         The affine transformation matrix.
+    degrees : :obj:`bool`, optional
+        If :obj:`True`, return degrees; otherwise radians.
 
     Returns
     -------
@@ -248,7 +250,7 @@ def extract_motion_parameters(affine: np.ndarray) -> Tuple[np.ndarray, np.ndarra
     """
 
     translation = affine[:3, 3]
-    rotation = euler_from_matrix(affine, degrees=True)
+    rotation = euler_from_matrix(affine, degrees=degrees)
     return *translation, *rotation
 
 
