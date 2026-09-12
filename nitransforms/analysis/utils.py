@@ -66,7 +66,18 @@ AFFINE_SEQ_SHAPE_ERROR = "Affine input must have shape (4, 4) or (T, 4, 4)."
 
 @dataclass(frozen=True)
 class MotionParameters:
-    """Representation for translation and rotation motion parameters."""
+    """Representation for translation and rotation motion parameters.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> params = MotionParameters(
+    ...     translations=np.zeros((3, 3)),
+    ...     rotations=np.zeros((3, 3))
+    ... )
+    >>> params.translations.shape
+    (3, 3)
+    """
 
     translations: np.ndarray
     """Translational motion parameters with shape ``(T, 3)`` in mm."""
@@ -116,6 +127,22 @@ def extract_motion_parameters(
     :exc:`ValueError`
         If ``motion_parameters`` does not have shape ``(T, 6)`` or if ``fmt``
         is unrecognized.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> raw_params = np.zeros((10, 6))
+    >>> params = extract_motion_parameters(raw_params, fmt=MOTION_FORMAT_FSL)
+    >>> params.translations.shape
+    (10, 3)
+    >>> params.rotations.shape
+    (10, 3)
+
+    >>> # Using AFNI format (rotations in degrees are converted to radians)
+    >>> afni_params = np.array([[1.0, 2.0, 3.0, 180.0, 0.0, 0.0]])
+    >>> params_afni = extract_motion_parameters(afni_params, fmt=MOTION_FORMAT_AFNI)
+    >>> np.allclose(params_afni.rotations[0, 0], np.pi)
+    True
     """
     arr = np.asarray(motion_parameters, dtype=float)
     if arr.ndim != 2 or arr.shape[1] != 6:
@@ -154,6 +181,21 @@ def affine_to_motion_params(
     -------
     :class:`~nitransforms.analysis.utils.MotionParameters`
         Structured translations and rotations.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> # Convert a single 4x4 affine matrix
+    >>> mat = np.eye(4)
+    >>> params = affine_to_motion_params(mat)
+    >>> params.translations.shape
+    (1, 3)
+
+    >>> # Convert a batch of 3 affine matrices (shape: T, 4, 4)
+    >>> batch_mat = np.tile(np.eye(4), (3, 1, 1))
+    >>> params_batch = affine_to_motion_params(batch_mat)
+    >>> params_batch.translations.shape
+    (3, 3)
     """
     # Check LinearTransformsMapping before Affine
     if isinstance(affine, LinearTransformsMapping):
@@ -201,6 +243,18 @@ def motion_params_to_affine(motion_parameters: MotionParameters) -> LinearTransf
     -------
     :class:`~nitransforms.linear.LinearTransformsMapping`
         A mapping representing the resolved sequence of affine transforms.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> # Create a MotionParameters record for 3 frames
+    >>> params = MotionParameters(
+    ...     translations=np.zeros((3, 3)),
+    ...     rotations=np.zeros((3, 3))
+    ... )
+    >>> mapping = motion_params_to_affine(params)
+    >>> len(mapping)
+    3
     """
     if not isinstance(motion_parameters, MotionParameters):
         raise TypeError(MOTION_PARAMS_INST_ERROR_MSG)
@@ -249,6 +303,17 @@ def compute_fd_from_motion(
     ------
     exc:`TypeError`
         If ``motion_parameters`` is not a :class:`MotionParameters` instance.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> params = MotionParameters(
+    ...     translations=np.array([[0.0, 0.0, 0.0], [1.0, 2.0, 3.0]]),
+    ...     rotations=np.zeros((2, 3))
+    ... )
+    >>> fd = compute_fd_from_motion(params)
+    >>> fd.shape
+    (2,)
     """
     if not isinstance(motion_parameters, MotionParameters):
         raise TypeError(MOTION_PARAMS_INST_ERROR_MSG)
@@ -307,6 +372,17 @@ def compute_fd_from_transform(
     ------
     exc:`ValueError`
         If ``n_vertices < 1``.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import nibabel as nb
+    >>> from nitransforms.linear import Affine
+    >>> img = nb.Nifti1Image(np.zeros((5, 5, 5)), np.eye(4))
+    >>> xfm = Affine()
+    >>> fd = compute_fd_from_transform(img, xfm)
+    >>> isinstance(fd, float)
+    True
     """
     if n_vertices < 1:
         raise ValueError("n_vertices must be >= 1")
@@ -360,6 +436,16 @@ def displacements_within_mask(
     :obj:`~numpy.ndarray`
         An array of displacements (in mm) for each voxel within the mask.
 
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import nibabel as nb
+    >>> from nitransforms.linear import Affine
+    >>> mask_img = nb.Nifti1Image(np.ones((3, 3, 3)), np.eye(4))
+    >>> xfm = Affine()
+    >>> disps = displacements_within_mask(mask_img, xfm)
+    >>> disps.shape
+    (27,)
     """
     # Mask data as boolean (True for voxels inside the mask)
     maskdata = np.asanyarray(mask_img.dataobj) > 0
