@@ -19,15 +19,15 @@ from __future__ import annotations
 
 
 import math
+from dataclasses import dataclass
 from itertools import product
-from typing import Tuple
 
 import nibabel as nb
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 
 from nitransforms.base import TransformBase
-from nitransforms.linear import Affine
+from nitransforms.linear import Affine, LinearTransformsMapping
 
 
 DEFAULT_FD_RADIUS = 50.0
@@ -37,9 +37,191 @@ The choice was proposed by [Power2012]_, and it represents approximately the mea
 distance from the cerebral cortex to the center of the head.
 """
 
+MOTION_FORMAT_AFNI = "afni"
+"""AFNI motion parameter format identifier."""
+MOTION_FORMAT_FSL = "fsl"
+"""FSL motion parameter format identifier."""
+
+TRANSLATIONS_ERROR_MSG = "'translations' must have shape (T, 3)."
+"""Translations shape error message"""
+ROTATIONS_SHAPE_ERROR_MSG = "'rotations' must have shape (R, 3)."
+"""Rotations shape error message."""
+MOTION_PARAMS_SHAPE_ERROR_MSG = "'motion_parameters' must have shape (T, 6)."
+"""Motion parameters shape error message"""
+MOTION_PARAMS_FMT_ERROR_MSG = (
+    "Unsupported motion parameter format: '{fmt}'. "
+    f"Supported formats are: '{MOTION_FORMAT_AFNI}', '{MOTION_FORMAT_FSL}'."
+)
+"""Unsupported motion parameter format error message."""
+MOTION_PARAMS_INST_ERROR_MSG = "'motion_parameters' must be a 'MotionParameters' instance."
+"""Motion parameters instance error message."""
+
+AFFINE_TYPE_ERROR_MSG = "Affine input must be a valid array, Affine, or LinearTransformsMapping."
+"""Affine input type error message."""
+AFFINE_SHAPE_ERROR = "Affine input must have shape (4, 4)."
+"""Affine shape error message."""
+AFFINE_SEQ_SHAPE_ERROR = "Affine input must have shape (4, 4) or (T, 4, 4)."
+"""Affine sequence error message."""
+
+
+@dataclass(frozen=True)
+class MotionParameters:
+    """Representation for translation and rotation motion parameters."""
+
+    translations: np.ndarray
+    """Translational motion parameters with shape ``(T, 3)`` in mm."""
+    rotations: np.ndarray
+    """Rotational motion parameters with shape ``(T, 3)``."""
+
+    def __post_init__(self):
+        object.__setattr__(self, "translations", np.asarray(self.translations, dtype=float))
+        object.__setattr__(self, "rotations", np.asarray(self.rotations, dtype=float))
+        if self.translations.ndim != 2 or self.translations.shape[1] != 3:
+            raise ValueError(TRANSLATIONS_ERROR_MSG)
+        if self.rotations.ndim != 2 or self.rotations.shape[1] != 3:
+            raise ValueError(ROTATIONS_SHAPE_ERROR_MSG)
+
+    def __iter__(self):
+        return iter((self.translations, self.rotations))
+
+
+def extract_motion_parameters(
+    motion_parameters: np.ndarray, fmt: str | None = None
+) -> MotionParameters:
+    """Extract translation and rotation parameters into :class:`MotionParameters`.
+
+    Parameters
+    ----------
+    motion_parameters : :obj:`~numpy.ndarray`
+        An ``(T, 6)`` array of motion parameters.
+    fmt : :obj:`str`, optional
+        Parameter format specification. Supported formats:
+
+        - `:data:`~nitransforms.analysis.utils.MOTION_FORMAT_AFNI`:
+          Assumes standard AFNI 6-column output where translations are
+          in the first three columns (in mm) and rotations are in the
+          subsequent three columns (converted from degrees to radians).
+        - :data:`~nitransforms.analysis.utils.MOTION_FORMAT_FSL` (or :obj:`None`):
+          Standard FSL-style 6-column format where translations are in
+          the first three columns and rotations are in the last three
+          columns.
+
+    Returns
+    -------
+    :class:`~nitransforms.analysis.utils.MotionParameters`
+        Structured translations and rotations.
+
+    Raises
+    ------
+    :exc:`ValueError`
+        If ``motion_parameters`` does not have shape ``(T, 6)`` or if ``fmt``
+        is unrecognized.
+    """
+    arr = np.asarray(motion_parameters, dtype=float)
+    if arr.ndim != 2 or arr.shape[1] != 6:
+        raise ValueError(MOTION_PARAMS_SHAPE_ERROR_MSG)
+
+    translations = arr[:, :3]
+    rotations = arr[:, 3:]
+
+    if fmt is not None:
+        fmt = fmt.lower()
+        if fmt == MOTION_FORMAT_AFNI:
+            # AFNI outputs rotations in degrees; convert to radians for
+            # internal consistency
+            rotations = np.deg2rad(rotations)
+        elif fmt == MOTION_FORMAT_FSL:
+            pass
+        else:
+            raise ValueError(MOTION_PARAMS_FMT_ERROR_MSG.format(fmt=fmt))
+
+    return MotionParameters(translations=translations, rotations=rotations)
+
+
+def affine_to_motion_params(
+    affine: Affine | LinearTransformsMapping | np.ndarray
+) -> MotionParameters:
+    """Convert an affine transformation or sequence of transformations into a :class:`MotionParameters`.
+
+    Parameters
+    ----------
+    affine : :obj:`~nitransforms.linear.Affine`, :obj:`~nitransforms.linear.LinearTransformsMapping`, or :obj:`~numpy.ndarray`
+        A single ``(4, 4)`` affine matrix, an :class:`~nitransforms.linear.Affine`
+        instance, a :class:`~nitransforms.linear.LinearTransformsMapping` sequence,
+        or a batch array of shape ``(T, 4, 4)``.
+
+    Returns
+    -------
+    :class:`~nitransforms.analysis.utils.MotionParameters`
+        Structured translations and rotations.
+    """
+    # Check LinearTransformsMapping before Affine
+    if isinstance(affine, LinearTransformsMapping):
+        matrices = affine.matrix
+    elif isinstance(affine, Affine):
+        matrices = affine.matrix[np.newaxis, :, :]
+    else:
+        try:
+            matrix = np.asarray(affine, dtype=float)
+        except (ValueError, TypeError) as e:
+            raise TypeError(AFFINE_TYPE_ERROR_MSG) from e
+
+        if matrix.ndim == 2:
+            if matrix.shape != (4, 4):
+                raise ValueError(AFFINE_SHAPE_ERROR)
+            matrices = matrix[np.newaxis, :, :]
+        elif matrix.ndim == 3:
+            if matrix.shape[1:] != (4, 4):
+                raise ValueError(AFFINE_SEQ_SHAPE_ERROR)
+            matrices = matrix
+        else:
+            raise ValueError(AFFINE_SEQ_SHAPE_ERROR)
+
+    T = matrices.shape[0]
+    translations = np.zeros((T, 3))
+    rotations = np.zeros((T, 3))
+
+    for i in range(T):
+        M = matrices[i]
+        translations[i] = M[:3, 3]
+        rotations[i] = nb.eulerangles.mat2euler(M[:3, :3])
+
+    return MotionParameters(translations=translations, rotations=rotations)
+
+
+def motion_params_to_affine(motion_parameters: MotionParameters) -> LinearTransformsMapping:
+    """Convert a :class:`MotionParameters` object into a :class:`LinearTransformsMapping`.
+
+    Parameters
+    ----------
+    motion_parameters : :class:`~nitransforms.analysis.utils.MotionParameters`
+        A :class:`MotionParameters` object holding translations and rotations.
+
+    Returns
+    -------
+    :class:`~nitransforms.linear.LinearTransformsMapping`
+        A mapping representing the resolved sequence of affine transforms.
+    """
+    if not isinstance(motion_parameters, MotionParameters):
+        raise TypeError(MOTION_PARAMS_INST_ERROR_MSG)
+
+    translations = motion_parameters.translations
+    rotations = motion_parameters.rotations
+    T = translations.shape[0]
+
+    transforms = []
+    for i in range(T):
+        R = nb.eulerangles.euler2mat(*rotations[i])
+        t = translations[i]
+        mat = nb.affines.from_matvec(R, t)
+        transforms.append(Affine(mat))
+
+    return LinearTransformsMapping(transforms)
+
 
 def compute_fd_from_motion(
-    motion_parameters: np.ndarray,
+    motion_parameters: MotionParameters,
+    *,
     radius: float = DEFAULT_FD_RADIUS,
 ) -> np.ndarray:
     """Compute framewise displacement (FD) from motion parameters.
@@ -48,14 +230,11 @@ def compute_fd_from_motion(
     and rotational motion, computed from the frame-to-frame differences along
     the three spatial axes [Power2012]_.
 
-    Each row in the motion parameters represents one frame, and columns
-    represent each coordinate axis ``x``, `y``, and ``z``. Translation
-    parameters are followed by rotation parameters column-wise.
-
     Parameters
     ----------
-    motion_parameters : :obj:`~numpy.ndarray`
-        Motion parameters.
+    motion_parameters : :obj:`MotionParameters`
+        Either a :class:`MotionParameters` instance, a `(T, 3)` array of translations,
+        or a legacy `(T, 6)` combined array.
     radius : :obj:`float`, optional
         Radius (in mm) of a sphere mimicking the size of a typical human brain.
 
@@ -68,19 +247,15 @@ def compute_fd_from_motion(
 
     Raises
     ------
-    exc:`ValueError`
-        If ``motion_parameters`` is not a 2D array with shape ``(T, 6)``.
+    exc:`TypeError`
+        If ``motion_parameters`` is not a :class:`MotionParameters` instance.
     """
+    if not isinstance(motion_parameters, MotionParameters):
+        raise TypeError(MOTION_PARAMS_INST_ERROR_MSG)
 
-    # Columns expected: [tx, ty, tz, rx, ry, rz] where rotations are in degrees
-    # FD is computed as Power-style L1 displacement sum across 6 motion components.
-    motion_parameters = np.asarray(motion_parameters, dtype=float)
-    if motion_parameters.ndim != 2 or motion_parameters.shape[1] != 6:
-        raise ValueError("motion_parameters must have shape (T, 6).")
+    translations = motion_parameters.translations
+    rotations = motion_parameters.rotations
 
-    translations = motion_parameters[:, :3]
-    rotations = np.deg2rad(motion_parameters[:, 3:])
-    
     displacements = np.hstack((
         np.diff(translations, axis=0, prepend=np.zeros((1, 3))),
         np.diff(rotations * radius, axis=0, prepend=np.zeros((1, 3)))
@@ -199,59 +374,6 @@ def displacements_within_mask(
     # Compute the difference (displacement) between the test and reference transformations
     diffs = targets - xyz if xfm_prev is None else targets - xfm_prev.map(xyz)
     return np.linalg.norm(diffs, axis=-1)
-
-
-def euler_from_matrix(affine: np.ndarray, degrees: bool = False) -> np.ndarray:
-    """Extract XYZ Euler angles from affine or rotation matrices using SciPy.
-
-    Parameters
-    ----------
-    affine : :obj:`~numpy.ndarray`
-        Array with shape (..., 4, 4) or (..., 3, 3).
-    degrees : :obj:`bool`, optional
-        If :obj:`True`, return degrees; otherwise radians.
-
-    Returns
-    -------
-   :obj:`~numpy.ndarray`
-        Array of shape (..., 3), Euler angles in 'xyz' convention.
-
-    Raises
-    ------
-    :exc:`ValueError`
-        If ``affine`` does not end with shape ``(3, 3)`` or ``(4, 4)``.
-    """
-    affine = np.asarray(affine, dtype=float)
-    if affine.shape[-2:] not in ((3, 3), (4, 4)):
-        raise ValueError("affine must end with shape (3, 3) or (4, 4).")
-
-    mats = affine[..., :3, :3]
-    batch_shape = mats.shape[:-2]
-    mats_2d = mats.reshape(-1, 3, 3)
-
-    angles = R.from_matrix(mats_2d).as_euler("xyz", degrees=degrees)
-    return angles.reshape(*batch_shape, 3)
-
-
-def extract_motion_parameters(affine: np.ndarray, degrees: bool = False) -> Tuple[np.ndarray, np.ndarray]:
-    """Extract translation (mm) and rotation parameters from an affine matrix.
-
-    Parameters
-    ----------
-    affine : :obj:`~numpy.ndarray`
-        The affine transformation matrix.
-    degrees : :obj:`bool`, optional
-        If :obj:`True`, return degrees; otherwise radians.
-
-    Returns
-    -------
-    :obj:`tuple`
-        Extracted translation and rotation parameters.
-    """
-
-    translation = affine[:3, 3]
-    rotation = euler_from_matrix(affine, degrees=degrees)
-    return *translation, *rotation
 
 
 def sample_unit_sphere(n_points: int = 8) -> np.ndarray:

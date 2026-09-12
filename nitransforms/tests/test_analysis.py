@@ -1,6 +1,8 @@
 # emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
 # vi: set ft=python sts=4 ts=4 sw=4 et:
 
+import re
+
 import numpy as np
 import nibabel as nb
 import pytest
@@ -9,12 +11,25 @@ from scipy.spatial.transform import Rotation as R
 import nitransforms as nt
 
 from nitransforms.analysis.utils import (
+    AFFINE_SHAPE_ERROR,
+    AFFINE_SEQ_SHAPE_ERROR,
+    AFFINE_TYPE_ERROR_MSG,
+    MOTION_FORMAT_AFNI,
+    MOTION_FORMAT_FSL,
+    MOTION_PARAMS_SHAPE_ERROR_MSG,
+    MOTION_PARAMS_FMT_ERROR_MSG,
+    MOTION_PARAMS_INST_ERROR_MSG,
+    ROTATIONS_SHAPE_ERROR_MSG,
+    TRANSLATIONS_ERROR_MSG,
+    MotionParameters,
+    affine_to_motion_params,
     compute_fd_from_motion,
     compute_fd_from_transform,
     displacements_within_mask,
-    euler_from_matrix,
     extract_motion_parameters,
+    motion_params_to_affine,
 )
+from nitransforms.linear import Affine, LinearTransformsMapping
 
 
 @pytest.fixture
@@ -52,6 +67,175 @@ def rotation_transform():
         [0, 0, 0, 1],
     ])
     return nt.linear.Affine(map=rot)
+
+
+@pytest.mark.parametrize(
+    "translations, rotations, match_msg",
+    [
+        (np.zeros((10, 6)), np.zeros((10, 3)), TRANSLATIONS_ERROR_MSG),
+        (np.zeros((10, 3)), np.zeros((10, 6)), ROTATIONS_SHAPE_ERROR_MSG),
+        (np.zeros((10,)), np.zeros((10, 3)), TRANSLATIONS_ERROR_MSG),
+        (np.zeros((10, 3)), np.zeros((10,)), ROTATIONS_SHAPE_ERROR_MSG),
+    ],
+)
+def test_motion_parameters_validation(translations, rotations, match_msg):
+    with pytest.raises(ValueError, match=re.escape(match_msg)):
+        MotionParameters(translations, rotations)
+
+
+def test_motion_parameters_creation():
+    t = np.zeros((10, 3))
+    r = np.ones((10, 3))
+    params = MotionParameters(t, r)
+
+    assert params.translations.shape == (10, 3)
+    assert params.rotations.shape == (10, 3)
+
+    # Test that it supports tuple unpacking
+    translations, rotations = params
+    assert np.array_equal(translations, t)
+    assert np.array_equal(rotations, r)
+
+
+def test_extract_motion_parameters_invalid_format():
+    arr = np.random.rand(5, 6)
+    fmt = "unknown_format"
+    with pytest.raises(
+        ValueError, match=re.escape(MOTION_PARAMS_FMT_ERROR_MSG.format(fmt=fmt))
+    ):
+        extract_motion_parameters(arr, fmt=fmt)
+
+
+@pytest.mark.parametrize(
+    "invalid_arr",
+    [
+        np.zeros((5, 5)),
+        np.zeros((5,)),
+        np.zeros((2, 3, 3)),
+    ],
+)
+def test_extract_motion_parameters_shape_validation(invalid_arr):
+    with pytest.raises(ValueError, match=re.escape(MOTION_PARAMS_SHAPE_ERROR_MSG)):
+        extract_motion_parameters(invalid_arr)
+
+
+@pytest.mark.parametrize(
+    "fmt, expected_conversion",
+    [
+        (None, lambda r: r),
+        (MOTION_FORMAT_FSL, lambda r: r),
+        (MOTION_FORMAT_AFNI, lambda r: np.deg2rad(r)),
+    ],
+)
+def test_extract_motion_parameters_fmt(fmt, expected_conversion):
+    arr = np.random.rand(10, 6)
+    translations_expected = arr[:, :3]
+    rotations_raw = arr[:, 3:]
+
+    params = extract_motion_parameters(arr, fmt=fmt)
+
+    assert isinstance(params, MotionParameters)
+    assert np.allclose(params.translations, translations_expected)
+    assert np.allclose(params.rotations, expected_conversion(rotations_raw))
+
+
+@pytest.mark.parametrize(
+    "invalid_input, expected_exception, expected_match",
+    [
+        (np.zeros((4,)), ValueError, AFFINE_SEQ_SHAPE_ERROR),
+        (np.zeros((3, 3)), ValueError, AFFINE_SHAPE_ERROR),
+        (np.zeros((2, 3, 3)), ValueError, AFFINE_SEQ_SHAPE_ERROR),
+        ("not_an_affine", TypeError, AFFINE_TYPE_ERROR_MSG),
+    ],
+)
+def test_affine_to_motion_params_validation(invalid_input, expected_exception, expected_match):
+    with pytest.raises(expected_exception, match=re.escape(expected_match)):
+        affine_to_motion_params(invalid_input)
+
+
+def test_motion_params_to_affine_type_error():
+    with pytest.raises(TypeError, match=MOTION_PARAMS_INST_ERROR_MSG):
+        motion_params_to_affine("not_motion_params")
+
+
+@pytest.mark.parametrize("num_frames", [1, 5])
+def test_affine_motion_params_roundtrip(num_frames):
+    # Create valid synthetic translations and pure rotations via euler angles
+    translations = np.random.uniform(-5.0, 5.0, size=(num_frames, 3))
+    rotations = np.random.uniform(-0.1, 0.1, size=(num_frames, 3))  # small angles
+
+    original_params = MotionParameters(translations=translations, rotations=rotations)
+
+    # Convert to mapping
+    mapping = motion_params_to_affine(original_params)
+    assert isinstance(mapping, LinearTransformsMapping)
+    assert len(mapping) == num_frames
+
+    # Convert back to motion parameters
+    # mapping.matrix returns the batch array of shape (T, 4, 4)
+    recovered_params = affine_to_motion_params(mapping.matrix)
+
+    assert np.allclose(recovered_params.translations, original_params.translations, atol=1e-5)
+    assert np.allclose(recovered_params.rotations, original_params.rotations, atol=1e-5)
+
+
+@pytest.mark.parametrize(
+    "input_shape, input_type",
+    [
+        ((4, 4), "ndarray"),
+        ((3, 4, 4), "ndarray"),
+        ((1, 4, 4), "ndarray"),
+        ((4, 4), "affine"),
+        ((3, 4, 4), "mapping"),
+    ],
+)
+def test_affine_to_motion_params_misc_data(input_shape, input_type):
+    if len(input_shape) == 2:
+        mat = np.eye(4)
+        mat[:3, 3] = [1.0, 2.0, 3.0]
+    else:
+        T = input_shape[0]
+        mat = np.tile(np.eye(4), (T, 1, 1))
+
+    if input_type == "ndarray":
+        affine_in = mat
+    elif input_type == "affine":
+        affine_in = Affine(mat)
+    elif input_type == "mapping":
+        affine_in = LinearTransformsMapping([Affine(m) for m in mat])
+
+    params = affine_to_motion_params(affine_in)
+
+    expected_T = input_shape[0] if len(input_shape) == 3 else 1
+    assert isinstance(params, MotionParameters)
+    assert params.translations.shape == (expected_T, 3)
+    assert params.rotations.shape == (expected_T, 3)
+
+
+@pytest.mark.parametrize(
+    "affine, expected_trans, expected_rot",
+    [
+        (np.eye(4) + np.array([[0,0,0,10],[0,0,0,15],[0,0,0,20],[0,0,0,0]]),  # translation only
+         [10, 15, 20], [0, 0, 0]),
+        (np.array([
+            [1, 0, 0, 0],
+            [0, np.cos(np.deg2rad(30)), -np.sin(np.deg2rad(30)), 0],
+            [0, np.sin(np.deg2rad(30)), np.cos(np.deg2rad(30)), 0],
+            [0, 0, 0, 1],  # rotation only
+        ]), [0, 0, 0], [np.deg2rad(30), 0, 0]),  # Only one rot will be close to 30
+    ],
+)
+def test_affine_to_motion_params(affine, expected_trans, expected_rot):
+    params = affine_to_motion_params(affine)
+
+    # Since single affine results in T=1, check the first row [0]
+    assert np.allclose(params.translations[0], expected_trans)
+
+    # For rotation case, verify the values
+    if np.any(np.abs(expected_rot)):
+        assert np.any(np.isclose(np.abs(params.rotations[0]), np.deg2rad(30), atol=1e-4))
+    else:
+        assert np.allclose(params.rotations[0], expected_rot)
 
 
 @pytest.mark.parametrize(
@@ -102,9 +286,9 @@ def test_compute_fd_from_transform(simple_mask_img, test_xfm, expected):
 
 
 def test_compute_fd_from_motion_exceptions():
-    bad = np.zeros((10, 5), dtype=float)  # must be (T, 6)
-    with pytest.raises(ValueError, match=r"motion_parameters must have shape \(T, 6\)\."):
-        compute_fd_from_motion(bad)
+    arr = np.zeros((4, 4), dtype=float)
+    with pytest.raises(TypeError, match=MOTION_PARAMS_INST_ERROR_MSG):
+        compute_fd_from_motion(arr)
 
 
 def test_compute_fd_from_motion_single_vertex_variants():
@@ -112,17 +296,20 @@ def test_compute_fd_from_motion_single_vertex_variants():
     radius = 50.0
 
     # One-step motion parameters: [tx, ty, tz, rx, ry, rz] (deg)
-    motion = np.array([
+    motion_arr = np.array([
         [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
         [1.0, -2.0, 0.5, 1.5, -0.5, 0.25],
     ])
 
+    # Convert raw array (with rotations in degrees) into MotionParameters
+    motion_params = extract_motion_parameters(motion_arr, fmt=MOTION_FORMAT_AFNI)
+
     # Expected from canonical function
-    fd_motion = compute_fd_from_motion(motion, radius=radius)[1]
+    fd_motion = compute_fd_from_motion(motion_params, radius=radius)[1]
 
     # Build matching transforms (prev identity, current from same params)
-    t = motion[1, :3]
-    r_deg = motion[1, 3:]
+    t = motion_arr[1, :3]
+    r_deg = motion_arr[1, 3:]
     rot = R.from_euler("xyz", r_deg, degrees=True).as_matrix()
 
     M_prev = np.eye(4)
@@ -142,7 +329,7 @@ def test_compute_fd_from_motion_single_vertex_variants():
 
 
 @pytest.mark.parametrize(
-    "motion_params, radius, expected",
+    "motion_arr, radius, expected",
     [
         (np.zeros((5, 6)), 50, np.zeros(5)),  # 5 frames, 3 trans, 3 rot
         (
@@ -156,74 +343,16 @@ def test_compute_fd_from_motion_single_vertex_variants():
         ),  # First frame: 0, Second: translation 2mm, Third: rotation (pi/2)*50
     ],
 )
-def test_compute_fd_from_motion(motion_params, radius, expected):
+def test_compute_fd_from_motion(motion_arr, radius, expected):
+    # Wrap with extract_parameters using AFNI format to handle
+    # degree-to-radian conversion
+    motion_params = extract_motion_parameters(motion_arr, fmt=MOTION_FORMAT_AFNI)
     fd = compute_fd_from_motion(motion_params, radius=radius)
+
+    # Verify output shape matches the expected number of frames
+    assert fd.shape == (len(expected),)
+    # Verify the initial frame has zero displacement
+    assert fd[0] == 0.0
+
+    # Comprehensive value check
     np.testing.assert_allclose(fd, expected, atol=1e-4)
-
-
-@pytest.mark.parametrize(
-    "shape",
-    [
-        (2, 2),        # square but invalid
-        (3, 4),        # rectangular
-        (4, 3),        # rectangular
-        (5, 5),        # wrong square size
-        (1, 3, 4),     # last dims (3,4)
-        (2, 4, 3),     # last dims (4,3)
-        (2, 3, 3, 4),  # last dims (3,4)
-        (2, 4, 4, 3),  # last dims (4,3)
-    ],
-)
-def test_euler_from_matrix_exceptions(shape):
-    bad = np.zeros(shape, dtype=float)
-    with pytest.raises(
-        ValueError,
-        match=r"affine must end with shape \(3, 3\) or \(4, 4\)\.",
-    ):
-        euler_from_matrix(bad)
-
-
-@pytest.mark.parametrize("shape", [(3, 3), (4, 4), (7, 3, 3), (5, 4, 4)])
-def test_euler_from_matrix_valid_shapes(shape):
-    good = np.eye(shape[-1], dtype=float)
-    if len(shape) > 2:
-        good = np.broadcast_to(good, shape).copy()
-
-    out = euler_from_matrix(good)
-    assert out.shape == shape[:-2] + (3,)
-
-
-def test_euler_from_matrix_matches_scipy_xyz():
-    expected = np.array([
-        [10.0, -5.0, 2.0],
-        [0.0, 30.0, -45.0],
-    ])
-    mats = R.from_euler("xyz", expected, degrees=True).as_matrix()
-    aff = np.tile(np.eye(4), (2, 1, 1))
-    aff[:, :3, :3] = mats
-
-    obtained = euler_from_matrix(aff, degrees=True)
-    assert np.allclose(obtained, expected, atol=1e-6)
-
-
-@pytest.mark.parametrize(
-    "affine, expected_trans, expected_rot",
-    [
-        (np.eye(4) + np.array([[0,0,0,10],[0,0,0,15],[0,0,0,20],[0,0,0,0]]),  # translation only
-         [10, 15, 20], [0, 0, 0]),
-        (np.array([
-            [1, 0, 0, 0],
-            [0, np.cos(np.deg2rad(30)), -np.sin(np.deg2rad(30)), 0],
-            [0, np.sin(np.deg2rad(30)), np.cos(np.deg2rad(30)), 0],
-            [0, 0, 0, 1],  # rotation only
-        ]), [0, 0, 0], [np.deg2rad(30), 0, 0]),  # Only one rot will be close to 30
-    ],
-)
-def test_extract_motion_parameters(affine, expected_trans, expected_rot):
-    params = extract_motion_parameters(affine)
-    assert np.allclose(params[:3], expected_trans)
-    # For rotation case, at least one value close to 30
-    if np.any(np.abs(expected_rot)):
-        assert np.any(np.isclose(np.abs(params[3:]), np.deg2rad(30), atol=1e-4))
-    else:
-        assert np.allclose(params[3:], expected_rot)
